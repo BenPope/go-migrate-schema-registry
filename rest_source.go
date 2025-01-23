@@ -5,9 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/twmb/franz-go/pkg/sr"
 	"maps"
 	"slices"
+
+	"github.com/twmb/franz-go/pkg/sr"
 )
 
 type RestSource struct {
@@ -18,6 +19,10 @@ type RestSource struct {
 
 	Ctx    context.Context
 	client *sr.Client
+}
+
+func (r *RestSource) GetURL() string {
+	return r.URL
 }
 
 func (r *RestSource) Connect() {
@@ -103,6 +108,14 @@ func (r *RestSource) getSubjectSchema(subject string, version int) (*sr.SubjectS
 	panic("oops")
 }
 
+func (r *RestSource) LookupSchema(subject string, s sr.Schema, p ...sr.Param) (sr.SubjectSchema, error) {
+	return r.client.LookupSchema(sr.WithParams(r.Ctx, p...), subject, s)
+}
+
+func (r *RestSource) SchemaByVersion(subject string, version int) (sr.SubjectSchema, error) {
+	return r.client.SchemaByVersion(r.Ctx, subject, version)
+}
+
 func (r *RestSource) GetState() (*State, error) {
 	subjectSchemas := make([]sr.SubjectSchema, 0)
 	softDeletions := make([]sr.SubjectVersion, 0)
@@ -159,7 +172,15 @@ func (r *RestSource) GetState() (*State, error) {
 
 	rawCompatibilityResults := r.client.Compatibility(r.Ctx, slices.Collect(maps.Keys(subjects))...)
 	prunedCompatibilityResults := filter(rawCompatibilityResults, func(result sr.CompatibilityResult) bool {
-		return result.Err == nil || result.Err.(*sr.ResponseError).StatusCode != 404
+		if result.Err == nil {
+			return true
+		}
+
+		var responseErr *sr.ResponseError
+		if errors.As(result.Err, &responseErr) {
+			return responseErr.StatusCode != 404
+		}
+		panic(fmt.Errorf("unexpected error type: %w", result.Err))
 	})
 
 	errs := make([]error, 0)

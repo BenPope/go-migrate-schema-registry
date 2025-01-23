@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"os"
+
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
@@ -13,7 +15,6 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/pkg/sr"
 	"github.com/twmb/tlscfg"
-	"os"
 
 	"log"
 	"maps"
@@ -240,7 +241,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		sourceB, err := buildSource("sourceA")
+		sourceB, err := buildSource("sourceB")
 		if err != nil {
 			panic(err)
 		}
@@ -261,5 +262,6 @@ func main() {
 		stateB.validate()
 
 		validate(stateA, stateB)
+		validateS(sourceA, sourceB)
 	}
 }

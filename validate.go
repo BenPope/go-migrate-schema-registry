@@ -2,9 +2,70 @@ package main
 
 import (
 	"fmt"
-	"github.com/twmb/franz-go/pkg/sr"
+	"net/url"
 	"reflect"
+
+	"github.com/pmezard/go-difflib/difflib"
+	"github.com/twmb/franz-go/pkg/sr"
 )
+
+func validateS(a Source, b Source) {
+	ra, aok := a.(*RestSource)
+	if aok {
+		bs, err := b.GetState()
+		if err != nil {
+			panic(fmt.Errorf("No state"))
+		}
+		validateR(ra, bs)
+	}
+	rb, bok := b.(*RestSource)
+	if bok {
+		as, err := a.GetState()
+		if err != nil {
+			panic(fmt.Errorf("No state"))
+		}
+		validateR(rb, as)
+	}
+}
+
+func validateR(rs *RestSource, s *State) {
+	success := 0
+	normalized := 0
+	not_found := 0
+	failed := 0
+	for _, subjectSchema := range s.SubjectSchemas {
+		path := url.PathEscape(subjectSchema.Subject)
+		_, err := rs.LookupSchema(subjectSchema.Subject, subjectSchema.Schema, sr.ShowDeleted)
+		if err == nil {
+			success += 1
+			fmt.Printf("%vsubjects/%v/versions/%v found\n", rs.GetURL(), path, subjectSchema.Version)
+		}
+		_, err = rs.LookupSchema(subjectSchema.Subject, subjectSchema.Schema, sr.ShowDeleted, sr.Normalize)
+		if err == nil {
+			normalized += 1
+			fmt.Printf("%vsubjects/%v/versions/%v found normalized, deleted\n", rs.GetURL(), path, subjectSchema.Version)
+			continue
+		}
+		sv, err := rs.SchemaByVersion(subjectSchema.Subject, subjectSchema.Version)
+		if err != nil {
+			failed += 1
+			fmt.Printf("%vsubjects/%v/versions/%v not found:\n%v\n", rs.GetURL(), path, subjectSchema.Version, subjectSchema.Schema)
+		} else {
+			not_found += 1
+
+			diff := difflib.UnifiedDiff{
+				A:        difflib.SplitLines(subjectSchema.Schema.Schema),
+				B:        difflib.SplitLines(sv.Schema.Schema),
+				FromFile: path,
+				ToFile:   sv.Subject,
+				Context:  3,
+			}
+			result, _ := difflib.GetUnifiedDiffString(diff)
+			fmt.Printf("%vsubjects/%v/versions/%v not found:\n%v\n%v\n", rs.GetURL(), path, subjectSchema.Version, result, subjectSchema.Schema.References)
+		}
+	}
+	fmt.Printf("RESULTS: success: %v, normalized: %v, not_found: %v, failed: %v\n", success, normalized, not_found, failed)
+}
 
 func validate(a *State, b *State) {
 
@@ -83,5 +144,4 @@ func validate(a *State, b *State) {
 			}
 		}
 	}
-
 }
